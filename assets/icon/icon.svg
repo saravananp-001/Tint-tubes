@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6875D6"/>
+      <stop offset="1" stop-color="#2B1B4A"/>
+    </linearGradient>
+    <clipPath id="glass">
+      <path d="M42,27 L42,69 A12,12 0 0 0 66,69 L66,27 Z"/>
+    </clipPath>
+  </defs>
+  <rect x="0" y="0" width="108" height="108" fill="url(#bg)"/>
+  <g transform="rotate(20 54 54)">
+    <path d="M42,27 L42,69 A12,12 0 0 0 66,69 L66,27 Z" fill="#FFFFFF" fill-opacity="0.2"/>
+    <g clip-path="url(#glass)">
+      <rect x="40" y="36" width="28" height="11.5" fill="#E53935"/>
+      <rect x="40" y="47.25" width="28" height="11.5" fill="#FDD835"/>
+      <rect x="40" y="58.5" width="28" height="11.5" fill="#43A047"/>
+      <rect x="40" y="69.75" width="28" height="12" fill="#1E88E5"/>
+      <rect x="40" y="36" width="28" height="1.6" fill="#FFFFFF" fill-opacity="0.35"/>
+      <path d="M47.5,33 L47.5,67" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+    </g>
+    <path d="M42,27 L42,69 A12,12 0 0 0 66,69 L66,27" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M39,27 L69,27" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>
