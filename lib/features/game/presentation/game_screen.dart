@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app_services.dart';
 import '../../../core/theme/app_theme.dart';
@@ -10,8 +11,11 @@ import '../../../core/widgets/app_background.dart';
 import '../../../core/widgets/coin_badge.dart';
 import '../../../core/widgets/confetti.dart';
 import '../../../core/widgets/sound_toggle.dart';
+import '../../../data/missions_repository.dart';
 import '../../../data/progress_repository.dart';
+import '../../../data/stats_repository.dart';
 import '../../achievements/domain/achievement.dart';
+import '../../challenge/domain/challenge.dart';
 import '../../levels/presentation/level_select_screen.dart';
 import '../../share/domain/milestones.dart';
 import '../../share/domain/poster_data.dart';
@@ -36,19 +40,37 @@ const int kExtraTubeCost = 5;
 /// Pours the first-level walkthrough guides the player through.
 const int kTutorialPours = 2;
 
-/// Plays either the levels of one [difficulty] or the daily puzzle of
-/// [dailyDay]; exactly one of the two must be given.
+/// Length of one game of Rush.
+const int kRushSeconds = 120;
+
+/// Coins for each puzzle solved in a game of Rush.
+const int kRushCoinsPerPuzzle = 3;
+
+/// Plays one of four things; exactly one must be given: the levels of a
+/// [difficulty], the daily puzzle of [dailyDay], a friend's [challenge],
+/// or [rush] mode (as many small puzzles as possible before time runs
+/// out).
 class GameScreen extends StatefulWidget {
   const GameScreen({
     super.key,
     required this.services,
     this.difficulty,
     this.dailyDay,
-  }) : assert((difficulty == null) != (dailyDay == null));
+    this.challenge,
+    this.rush = false,
+  }) : assert(
+         (difficulty != null ? 1 : 0) +
+                 (dailyDay != null ? 1 : 0) +
+                 (challenge != null ? 1 : 0) +
+                 (rush ? 1 : 0) ==
+             1,
+       );
 
   final AppServices services;
   final Difficulty? difficulty;
   final int? dailyDay;
+  final Challenge? challenge;
+  final bool rush;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -68,7 +90,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   AppServices get _services => widget.services;
   ProgressRepository get _progress => _services.progress;
   Difficulty? get _difficulty => widget.difficulty;
-  bool get _daily => widget.dailyDay != null;
+  Challenge? get _challenge => widget.challenge;
+  bool get _rush => widget.rush;
+  final _opened = DateTime.now();
+
+  // Rush mode.
+  int _rushSeed = Random().nextInt(1 << 20);
+  int _rushSolved = 0;
+  int _rushLeft = kRushSeconds;
+  Timer? _rushTimer;
+  bool _rushOver = false;
 
   int _level = 1;
   Tubes _tubes = [];
@@ -107,6 +138,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _hintTimer?.cancel();
+    _rushTimer?.cancel();
+    _services.stats.add(
+      Stat.seconds,
+      DateTime.now().difference(_opened).inSeconds,
+    );
     _pourCtrl.dispose();
     _selectCtrl.dispose();
     super.dispose();
@@ -120,7 +156,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     });
     final d = _difficulty;
     final Puzzle puzzle;
-    if (d == null) {
+    final c = _challenge;
+    if (_rush) {
+      puzzle = await compute(generateRushPuzzleIsolate, _rushSeed + level);
+    } else if (c != null) {
+      final tier = c.difficulty;
+      puzzle = tier == null
+          ? await compute(generateDailyPuzzleIsolate, c.number)
+          : await compute(generatePuzzleIsolate, (tier.index, c.number));
+    } else if (d == null) {
       puzzle = await compute(generateDailyPuzzleIsolate, widget.dailyDay!);
     } else {
       _progress.setCurrentLevel(d, level);
@@ -137,6 +181,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _syncHidden();
       _loading = false;
     });
+    if (_rush && !_rushOver) {
+      _rushTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _rushLeft--);
+        if (_rushLeft <= 0) _endRush();
+      });
+    }
     if (d == Difficulty.easy && level == 1 && !_progress.tutorialDone) {
       _tutorialLeft = kTutorialPours;
       _refreshTutorial();
@@ -176,7 +227,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     }
   }
 
-  bool get _busy => _loading || _pour != null;
+  bool get _busy => _loading || _pour != null || _rushOver;
 
   bool _canPick(int i) => _tubes[i].isNotEmpty && !isComplete(_tubes[i]);
 
@@ -211,6 +262,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     final color = _tubes[from].last;
     applyPour(_tubes, from, to, n);
     _moves++;
+    _services.stats.add(Stat.pours);
+    _services.missions.record(MissionEvent.pour);
     _selected = _previousSelected = null;
     _pour = PourAnimation(from, to, color, n);
     _pourCtrl.duration = Duration(
@@ -366,6 +419,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       return;
     }
     if (!_progress.spend(kHintCost)) return;
+    _services.stats.add(Stat.hints);
     setState(() {
       _hint = move;
       _usedHint = true;
@@ -379,16 +433,31 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   // ---- Winning ------------------------------------------------------------
 
   Future<void> _onSolved() async {
+    if (_rush) {
+      if (_rushOver) return;
+      _rushSolved++;
+      _services.haptics.heavy();
+      _services.sound.playComplete();
+      _loadLevel(_level + 1);
+      return;
+    }
     final stars = starsForMoves(_moves, _par);
     _services.haptics.heavy();
     _services.sound.playWin();
+    if (_challenge != null) return _onChallengeSolved(stars);
 
     final d = _difficulty;
     final int earned;
     var unlocked = const <Achievement>[];
     var lastLevel = false;
+    String? note;
+    final missions = _services.missions;
     if (d == null) {
-      earned = _services.daily.completePuzzle();
+      earned = _services.daily.completePuzzle(_moves);
+      if (earned > 0) {
+        _services.stats.add(Stat.dailies);
+        missions.record(MissionEvent.daily);
+      }
     } else {
       final firstTime = _progress.starsFor(d, _level) == 0;
       earned = _progress.completeLevel(d, _level, stars);
@@ -402,7 +471,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         usedUndo: _usedUndo,
         usedHelp: _usedHint || _extraTubeUsed,
       );
+      _services.stats.add(Stat.solves);
+      missions.record(MissionEvent.solve);
+      missions.record(MissionEvent.star, stars);
+      if (stars == 3) missions.record(MissionEvent.perfect);
+      if (!_usedUndo) missions.record(MissionEvent.noUndo);
+      if (firstTime && _services.spins.recordNewLevel()) {
+        note = 'You earned a lucky spin! Find it on the home screen.';
+      }
     }
+    final solvedMoves = _moves;
 
     final action = await showDialog<WinAction>(
       context: context,
@@ -423,6 +501,14 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             onShare: d != null && isMilestone(d, _level)
                 ? () => _openSharePoster(d, _level)
                 : null,
+            onChallenge: () => _shareChallenge(
+              Challenge(
+                difficulty: d,
+                number: d == null ? widget.dailyDay! : _level,
+                moves: solvedMoves,
+              ),
+            ),
+            note: note,
             moves: _moves,
             stars: stars,
             coinsEarned: earned,
@@ -441,6 +527,130 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _loadLevel(_level + 1);
     }
   }
+
+  void _shareChallenge(Challenge c) {
+    SharePlus.instance.share(ShareParams(text: c.shareText));
+  }
+
+  Future<void> _onChallengeSolved(int stars) async {
+    final c = _challenge!;
+    final won = _moves < c.moves;
+    if (won && _services.stats.markOnce('challenge:${c.code}')) {
+      _services.stats.add(Stat.challengesWon);
+    }
+    final action = await showDialog<WinAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Stack(
+        children: [
+          WinDialog(
+            title: won
+                ? 'Challenge won!'
+                : (_moves == c.moves ? 'It is a tie!' : 'Not this time'),
+            note: won
+                ? 'You needed ${c.moves - _moves} fewer moves than your '
+                      'friend.'
+                : 'Your friend solved it in ${c.moves} moves.',
+            nextLabel: 'Home',
+            replayLabel: 'Try again',
+            onChallenge: won
+                ? () => _shareChallenge(
+                    Challenge(
+                      difficulty: c.difficulty,
+                      number: c.number,
+                      moves: _moves,
+                    ),
+                  )
+                : null,
+            moves: _moves,
+            stars: stars,
+            coinsEarned: 0,
+            rewardLabel: '',
+            showReward: false,
+          ),
+          if (won) const Positioned.fill(child: Confetti()),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == WinAction.replay) {
+      setState(_reset);
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _endRush() async {
+    _rushTimer?.cancel();
+    _rushTimer = null;
+    setState(() => _rushOver = true);
+    final solved = _rushSolved;
+    final stats = _services.stats;
+    final best = stats.raiseTo(Stat.rushBest, solved);
+    stats.add(Stat.rushGames);
+    _services.missions.record(MissionEvent.rush);
+    final coins = solved * kRushCoinsPerPuzzle;
+    _progress.addCoins(coins);
+    _services.sound.playWin();
+    final again = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.timer_rounded, size: 44, color: AppColors.star),
+        title: const Text("Time's up!"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$solved',
+              style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w900),
+            ),
+            Text(solved == 1 ? 'puzzle solved' : 'puzzles solved'),
+            const SizedBox(height: 10),
+            Text(
+              best && solved > 0
+                  ? 'New best score!'
+                  : 'Best: ${stats.value(Stat.rushBest)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppColors.star,
+              ),
+            ),
+            if (coins > 0) ...[
+              const SizedBox(height: 12),
+              CoinBadge(coins: coins, fontSize: 18),
+            ],
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Home'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Play again'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (again != true) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _rushOver = false;
+      _rushSolved = 0;
+      _rushLeft = kRushSeconds;
+      _rushSeed = Random().nextInt(1 << 20);
+    });
+    _loadLevel(0);
+  }
+
+  String get _rushClock =>
+      '${max(0, _rushLeft) ~/ 60}:${(max(0, _rushLeft) % 60).toString().padLeft(2, '0')}';
 
   void _openSharePoster(Difficulty d, int level) {
     Navigator.push(
@@ -534,7 +744,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 child: Column(
                   children: [
                     Text(
-                      d == null ? 'DAILY' : d.label.toUpperCase(),
+                      _rush
+                          ? 'RUSH'
+                          : _challenge != null
+                          ? 'CHALLENGE'
+                          : d == null
+                          ? 'DAILY'
+                          : d.label.toUpperCase(),
                       style: const TextStyle(
                         fontSize: 12,
                         letterSpacing: 2,
@@ -542,7 +758,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       ),
                     ),
                     Text(
-                      d == null ? 'Puzzle' : 'Level $_level',
+                      _rush
+                          ? _rushClock
+                          : _challenge != null
+                          ? 'Beat ${_challenge!.moves} moves'
+                          : d == null
+                          ? 'Puzzle'
+                          : 'Level $_level',
                       style: const TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w800,
@@ -557,7 +779,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               ),
             ],
           ),
-          if (!_loading)
+          if (_rush)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Solved $_rushSolved',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.star,
+                ),
+              ),
+            )
+          else if (!_loading)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(
@@ -647,19 +881,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             label: 'Restart',
             onTap: _restart,
           ),
-          ToolButton(
-            icon: Icons.lightbulb_outline_rounded,
-            label: _thinking ? '…' : 'Hint',
-            cost: kHintCost,
-            onTap: _tutorial ? null : _showHint,
-          ),
-          ToolButton(
-            icon: Icons.add_rounded,
-            label: 'Tube',
-            cost: _extraTubeUsed ? null : kExtraTubeCost,
-            onTap: _extraTubeUsed ? null : _addTube,
-          ),
-          if (!_daily)
+          if (!_rush)
+            ToolButton(
+              icon: Icons.lightbulb_outline_rounded,
+              label: _thinking ? '…' : 'Hint',
+              cost: kHintCost,
+              onTap: _tutorial ? null : _showHint,
+            ),
+          if (!_rush && _challenge == null)
+            ToolButton(
+              icon: Icons.add_rounded,
+              label: 'Tube',
+              cost: _extraTubeUsed ? null : kExtraTubeCost,
+              onTap: _extraTubeUsed ? null : _addTube,
+            ),
+          if (_difficulty != null)
             ToolButton(
               icon: Icons.grid_view_rounded,
               label: 'Levels',

@@ -9,13 +9,20 @@ import '../../../data/daily_repository.dart';
 import '../../../data/progress_repository.dart';
 import '../../achievements/domain/achievement.dart';
 import '../../achievements/presentation/achievements_screen.dart';
+import '../../challenge/presentation/challenge_dialog.dart';
 import '../../game/domain/difficulty.dart';
 import '../../game/presentation/game_screen.dart';
 import '../../leaderboard/presentation/leaderboard_screen.dart';
+import '../../missions/presentation/missions_screen.dart';
+import '../../profile/domain/player_rank.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../share/domain/poster_data.dart';
 import '../../share/presentation/share_poster_screen.dart';
 import '../../shop/presentation/shop_screen.dart';
+import '../../spin/presentation/spin_screen.dart';
+import '../../stats/presentation/stats_screen.dart';
+import '../../../data/spin_repository.dart';
+import '../../../data/stats_repository.dart';
 
 /// Start screen: coins, daily gift and puzzle, and the three tiers.
 class HomeScreen extends StatelessWidget {
@@ -46,7 +53,9 @@ class HomeScreen extends StatelessWidget {
         );
       return;
     }
+    final frozen = daily.freezesNeeded;
     final coins = daily.claimGift();
+    services.stats.raiseTo(Stat.bestStreak, daily.streak);
     final unlocked = services.achievements.recordDailyStreak(daily.streak);
     await showDialog<void>(
       context: context,
@@ -62,6 +71,18 @@ class HomeScreen extends StatelessWidget {
           children: [
             CoinBadge(coins: coins, fontSize: 22),
             const SizedBox(height: 12),
+            if (frozen > 0)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'A streak freeze kept your streak alive.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF81D4FA),
+                  ),
+                ),
+              ),
             Text(
               'Come back tomorrow for ${daily.nextGift} coins. '
               'Missing a day starts the streak again.',
@@ -85,6 +106,13 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _enterChallenge(BuildContext context) async {
+    final challenge = await showChallengeDialog(context);
+    if (challenge != null && context.mounted) {
+      _open(context, GameScreen(services: services, challenge: challenge));
+    }
   }
 
   Future<void> _tryUnlock(BuildContext context, Difficulty d) async {
@@ -144,8 +172,15 @@ class HomeScreen extends StatelessWidget {
       body: AppBackground(
         child: SafeArea(
           child: ListenableBuilder(
-            listenable: Listenable.merge([progress, daily, services.profile]),
-            builder: (context, _) => Padding(
+            listenable: Listenable.merge([
+              progress,
+              daily,
+              services.profile,
+              services.missions,
+              services.spins,
+              services.stats,
+            ]),
+            builder: (context, _) => _Scrollable(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -181,20 +216,57 @@ class HomeScreen extends StatelessWidget {
                           ),
                           icon: const Icon(Icons.leaderboard_rounded),
                         ),
-                      if (PosterData.latest(
-                            progress,
-                            playerName: services.profile.name,
-                            playerPhoto: services.profile.photoPath,
-                          )
-                          case final poster?)
-                        IconButton(
-                          tooltip: 'Share your milestone',
-                          onPressed: () => _open(
-                            context,
-                            SharePosterScreen(progress: progress, data: poster),
+                      PopupMenuButton<int>(
+                        tooltip: 'More',
+                        icon: const Icon(Icons.more_horiz_rounded),
+                        onSelected: (choice) {
+                          switch (choice) {
+                            case 0:
+                              _open(context, StatsScreen(services: services));
+                            case 1:
+                              _enterChallenge(context);
+                            case 2:
+                              final poster = PosterData.latest(
+                                progress,
+                                playerName: services.profile.name,
+                                playerPhoto: services.profile.photoPath,
+                              );
+                              if (poster != null) {
+                                _open(
+                                  context,
+                                  SharePosterScreen(
+                                    progress: progress,
+                                    data: poster,
+                                  ),
+                                );
+                              }
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 0,
+                            child: ListTile(
+                              leading: Icon(Icons.insights_rounded),
+                              title: Text('Statistics'),
+                            ),
                           ),
-                          icon: const Icon(Icons.share_rounded),
-                        ),
+                          const PopupMenuItem(
+                            value: 1,
+                            child: ListTile(
+                              leading: Icon(Icons.sports_kabaddi_rounded),
+                              title: Text('Enter challenge code'),
+                            ),
+                          ),
+                          if (PosterData.latest(progress) != null)
+                            const PopupMenuItem(
+                              value: 2,
+                              child: ListTile(
+                                leading: Icon(Icons.share_rounded),
+                                title: Text('Share your milestone'),
+                              ),
+                            ),
+                        ],
+                      ),
                       const Spacer(),
                       CoinBadge(coins: progress.coins, fontSize: 18),
                     ],
@@ -240,6 +312,8 @@ class HomeScreen extends StatelessWidget {
                       color: Colors.white70,
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  _RankLine(rank: PlayerRank.of(progress, services.stats)),
                   const Spacer(),
                   IntrinsicHeight(
                     child: Row(
@@ -286,6 +360,58 @@ class HomeScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _DailyCard(
+                            icon: Icons.flag_rounded,
+                            title: 'Missions',
+                            subtitle: services.missions.claimable > 0
+                                ? '${services.missions.claimable} to claim'
+                                : '3 goals today',
+                            active: true,
+                            highlight: services.missions.claimable > 0,
+                            onTap: () => _open(
+                              context,
+                              MissionsScreen(services: services),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _DailyCard(
+                            icon: Icons.timer_rounded,
+                            title: 'Rush',
+                            subtitle:
+                                'Best ${services.stats.value(Stat.rushBest)}',
+                            active: true,
+                            onTap: () => _open(
+                              context,
+                              GameScreen(services: services, rush: true),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _DailyCard(
+                            icon: Icons.casino_rounded,
+                            title: 'Lucky spin',
+                            subtitle: services.spins.spins > 0
+                                ? '${services.spins.spins} ready'
+                                : '${services.spins.levelsTowardsNext}/'
+                                      '$kLevelsPerSpin levels',
+                            active: true,
+                            highlight: services.spins.spins > 0,
+                            onTap: () =>
+                                _open(context, SpinScreen(services: services)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 14),
                   for (final d in Difficulty.values)
                     Padding(
@@ -311,6 +437,62 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// Lets the home column scroll on short screens while still spreading
+/// out to fill tall ones.
+class _Scrollable extends StatelessWidget {
+  const _Scrollable({required this.padding, required this.child});
+
+  final EdgeInsets padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: box.maxHeight),
+        child: IntrinsicHeight(
+          child: Padding(padding: padding, child: child),
+        ),
+      ),
+    ),
+  );
+}
+
+/// "Level 4 · Mixer" with a thin bar towards the next level.
+class _RankLine extends StatelessWidget {
+  const _RankLine({required this.rank});
+
+  final PlayerRank rank;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SizedBox(
+      width: 220,
+      child: Column(
+        children: [
+          Text(
+            'Level ${rank.level} · ${rank.title}',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: rank.progress,
+              minHeight: 6,
+              color: AppColors.star,
+              backgroundColor: AppColors.starEmpty,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _DailyCard extends StatelessWidget {
   const _DailyCard({
     required this.icon,
@@ -319,6 +501,7 @@ class _DailyCard extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.trailing,
+    this.highlight = false,
   });
 
   final IconData icon;
@@ -329,11 +512,20 @@ class _DailyCard extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
 
+  /// Draws a gold outline: something here is ready to collect.
+  final bool highlight;
+
   @override
   Widget build(BuildContext context) {
     return Material(
       color: active ? AppColors.panel : AppColors.panelDim,
-      borderRadius: BorderRadius.circular(18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: highlight ? AppColors.star : Colors.transparent,
+          width: 2,
+        ),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,

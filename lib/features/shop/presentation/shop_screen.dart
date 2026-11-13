@@ -5,8 +5,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/cosmetics.dart';
 import '../../../core/widgets/app_background.dart';
 import '../../../core/widgets/coin_badge.dart';
+import '../../../data/daily_repository.dart';
 
-/// Spend coins on tube styles and backgrounds, and choose which to use.
+/// Spend coins on tube styles, backgrounds, win effects and streak
+/// freezes, and choose which cosmetics to use.
 class ShopScreen extends StatelessWidget {
   const ShopScreen({super.key, required this.services});
 
@@ -32,9 +34,29 @@ class ShopScreen extends StatelessWidget {
       );
   }
 
+  void _buyFreeze(BuildContext context) {
+    final daily = services.daily;
+    final String text;
+    if (daily.freezes >= kMaxFreezes) {
+      text = 'You can hold $kMaxFreezes freezes at most.';
+    } else if (daily.buyFreeze()) {
+      text = 'Streak freeze added. It is used by itself if you miss a day.';
+    } else {
+      text = 'A streak freeze costs $kFreezeCost coins.';
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final cosmetics = services.cosmetics;
+    final now = DateTime.now();
+    final backgrounds = [
+      for (final b in BackgroundTheme.values)
+        if (b.season == null || b.season!.includes(now) || cosmetics.owns(b)) b,
+    ];
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -56,10 +78,35 @@ class ShopScreen extends StatelessWidget {
       body: AppBackground(
         child: SafeArea(
           child: ListenableBuilder(
-            listenable: cosmetics,
+            listenable: Listenable.merge([cosmetics, services.daily]),
             builder: (context, _) => ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                Material(
+                  color: AppColors.panel,
+                  borderRadius: BorderRadius.circular(16),
+                  clipBehavior: Clip.antiAlias,
+                  child: ListTile(
+                    onTap: () => _buyFreeze(context),
+                    leading: const Icon(
+                      Icons.ac_unit_rounded,
+                      color: Color(0xFF81D4FA),
+                      size: 32,
+                    ),
+                    title: const Text(
+                      'Streak freeze',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      'Keeps your daily streak if you miss a day. '
+                      'You have ${services.daily.freezes} of $kMaxFreezes.',
+                    ),
+                    trailing: services.daily.freezes >= kMaxFreezes
+                        ? const Text('Full')
+                        : const CoinBadge(coins: kFreezeCost, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 const _SectionTitle('Tube styles'),
                 _ItemGrid(
                   children: [
@@ -77,18 +124,35 @@ class ShopScreen extends StatelessWidget {
                 const _SectionTitle('Backgrounds'),
                 _ItemGrid(
                   children: [
-                    for (final b in BackgroundTheme.values)
+                    for (final b in backgrounds)
                       _ItemCard(
                         item: b,
                         owned: cosmetics.owns(b),
                         selected: cosmetics.isSelected(b),
                         onTap: () => _onTap(context, b),
+                        tag: b.season == null || cosmetics.owns(b)
+                            ? null
+                            : 'Until ${b.season!.ends}',
                         preview: DecoratedBox(
                           decoration: b.decoration.copyWith(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.white24),
                           ),
                         ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const _SectionTitle('Win effects'),
+                _ItemGrid(
+                  children: [
+                    for (final c in ConfettiStyle.values)
+                      _ItemCard(
+                        item: c,
+                        owned: cosmetics.owns(c),
+                        selected: cosmetics.isSelected(c),
+                        onTap: () => _onTap(context, c),
+                        preview: CustomPaint(painter: _ConfettiPreview(c)),
                       ),
                   ],
                 ),
@@ -99,6 +163,37 @@ class ShopScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A few pieces of one confetti style.
+class _ConfettiPreview extends CustomPainter {
+  _ConfettiPreview(this.style);
+
+  final ConfettiStyle style;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const spots = [
+      (0.25, 0.25, 0.0),
+      (0.7, 0.2, 0.6),
+      (0.5, 0.52, -0.4),
+      (0.22, 0.75, 0.9),
+      (0.75, 0.75, -0.8),
+    ];
+    for (var i = 0; i < spots.length; i++) {
+      canvas.save();
+      canvas.translate(size.width * spots[i].$1, size.height * spots[i].$2);
+      canvas.rotate(spots[i].$3);
+      canvas.drawPath(
+        style.piece(size.shortestSide * 0.2),
+        Paint()..color = AppColors.liquids[[0, 3, 1, 6, 7][i]],
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPreview old) => old.style != style;
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -140,7 +235,11 @@ class _ItemCard extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.preview,
+    this.tag,
   });
+
+  /// Small note over the preview, e.g. when a seasonal item leaves.
+  final String? tag;
 
   final Cosmetic item;
   final bool owned, selected;
@@ -165,7 +264,33 @@ class _ItemCard extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              Expanded(child: SizedBox.expand(child: preview)),
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    preview,
+                    if (tag != null)
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            tag!,
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 item.label,

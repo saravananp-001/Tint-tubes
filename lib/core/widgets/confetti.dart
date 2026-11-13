@@ -3,10 +3,15 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/cosmetics.dart';
+import 'app_background.dart';
 
-/// A single burst of confetti falling over whatever is underneath.
+/// A single burst of confetti falling over whatever is underneath, in
+/// the style the player has chosen unless [style] is given.
 class Confetti extends StatefulWidget {
-  const Confetti({super.key});
+  const Confetti({super.key, this.style});
+
+  final ConfettiStyle? style;
 
   @override
   State<Confetti> createState() => _ConfettiState();
@@ -26,15 +31,28 @@ class _ConfettiState extends State<Confetti>
   }
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: CustomPaint(size: Size.infinite, painter: _ConfettiPainter(_ctrl)),
-  );
+  Widget build(BuildContext context) {
+    final style =
+        widget.style ??
+        context
+            .dependOnInheritedWidgetOfExactType<CosmeticsScope>()
+            ?.notifier
+            ?.confetti ??
+        ConfettiStyle.classic;
+    return IgnorePointer(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _ConfettiPainter(_ctrl, style),
+      ),
+    );
+  }
 }
 
 class _ConfettiPainter extends CustomPainter {
-  _ConfettiPainter(this.progress) : super(repaint: progress);
+  _ConfettiPainter(this.progress, this.style) : super(repaint: progress);
 
   final Animation<double> progress;
+  final ConfettiStyle style;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -57,10 +75,7 @@ class _ConfettiPainter extends CustomPainter {
       canvas.save();
       canvas.translate(x, y);
       canvas.rotate(spin * local);
-      canvas.drawRect(
-        Rect.fromCenter(center: Offset.zero, width: w, height: w * 0.55),
-        paint,
-      );
+      canvas.drawPath(style.piece(w), paint);
       canvas.restore();
     }
   }

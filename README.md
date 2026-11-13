@@ -31,7 +31,9 @@ lib/
     achievements/               achievement list
     shop/                       tube styles and backgrounds
     settings/                   settings, how to play, reset
-    leaderboard/                online leaderboard
+    leaderboard/                online leaderboards
+    missions/, spin/, stats/    daily missions, lucky wheel, statistics
+    challenge/                  friend challenge codes
 test/                           mirrors lib/
 ```
 
@@ -54,12 +56,35 @@ test/                           mirrors lib/
 - Daily puzzle: one 7 to 9 colour puzzle per day, 30 coins for the first
   solve.
 
+## Keeping players coming back
+
+- **Daily reminder** (off by default, Settings): local notifications at
+  7 pm on the next few days without play; opening the game pushes them
+  back (`core/notifications/reminder_service.dart`).
+- **Streak freeze**: 25 coins in the shop, two at most; one is used up
+  for each missed day to keep the daily streak.
+- **Daily missions**: three goals a day from `Mission`, the same for
+  everyone that day, each paying coins when claimed.
+- **Rush**: as many 4 to 6 colour puzzles as possible in two minutes;
+  3 coins per puzzle and a best score.
+- **Friend challenge**: any solved level or daily puzzle can be shared as
+  a code such as `TT-M23-31`; entering it (home menu) plays the same
+  puzzle against that move count. Challenges pay no coins.
+- **Player level**: worked out from stars, daily puzzles, Rush best and
+  challenge wins (`player_rank.dart`); shown on home and the leaderboard.
+- **Lucky spin**: one free spin of the wheel for every 5 new levels.
+- **Statistics**: lifetime counters, opened from the home menu.
+
 ## Achievements, shop and settings
 
 - 11 achievements pay coins once each (`achievement.dart`); unlocked ones
   can be shared with the poster.
-- The shop sells tube styles (Jar 60, Flask 120) and backgrounds (Ocean 40,
-  Sunset 80, Forest 80), defined in `core/theme/cosmetics.dart`.
+- The shop sells tube styles (Jar 60, Flask 120), backgrounds (Ocean 40,
+  Sunset 80, Forest 80, Aurora 100, Candy 100), win effects (Stars 50,
+  Bubbles 50, Hearts 70) and streak freezes, defined in
+  `core/theme/cosmetics.dart`.
+- Seasonal backgrounds (Festival, Winter, Spring, Summer; 60 each) are on
+  sale only inside their `Season` and are kept once bought.
 - Settings: sound, vibration, colour-blind letters, pour speed, how to
   play, and reset progress.
 
@@ -82,6 +107,12 @@ fully offline and the leaderboard is hidden.
   under 13.
 - The "Join the online leaderboard" switch on the profile screen only
   decides whether other players see the nickname and score.
+- Three boards: stars this week (Monday to Sunday; the top 3 win 100, 60
+  and 40 coins, the rest of the top 10 win 20, paid the next time the
+  board is opened), today's daily puzzle in fewest moves
+  (`daily/{day}/scores/{uid}`), and all-time stars.
+- The weekly board needs the composite indexes in
+  `firestore.indexes.json`.
 - Sign-in is anonymous (no login screen).
 - `players/{uid}` holds the private profile (nickname, age range, picture
   marker, stars, levels); `leaderboard/{uid}` holds the public row

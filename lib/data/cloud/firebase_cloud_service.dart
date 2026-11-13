@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,7 +12,8 @@ import 'cloud_service.dart';
 ///
 /// - `players/{uid}`: private profile (name, age range, picture, score),
 ///   readable only by its owner.
-/// - `leaderboard/{uid}`: public row with nickname and score only.
+/// - `leaderboard/{uid}`: public row with nickname and scores only.
+/// - `daily/{day}/scores/{uid}`: public daily puzzle score.
 /// - Storage `profile_photos/{uid}.jpg`: the picture, owner only.
 ///
 /// Players are signed in anonymously, so there is no login screen.
@@ -83,6 +85,11 @@ class FirebaseCloudService implements CloudService {
         'name': player.name,
         'stars': player.stars,
         'levels': player.levels,
+        'playerLevel': player.playerLevel,
+        'week': player.week,
+        'weekStars': player.weekStars,
+        'lastWeek': player.lastWeek,
+        'lastWeekStars': player.lastWeekStars,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } else {
@@ -91,34 +98,104 @@ class FirebaseCloudService implements CloudService {
     await batch.commit();
   }
 
-  @override
-  Future<List<LeaderboardEntry>> topPlayers({int limit = 50}) async {
+  static int _int(Map<String, dynamic> data, String key) =>
+      (data[key] as num?)?.toInt() ?? 0;
+
+  /// Rows of [query], reading each entry's score from [scoreField].
+  Future<List<LeaderboardEntry>> _entries(
+    Query<Map<String, dynamic>> query,
+    String scoreField,
+  ) async {
     await _signIn();
-    final result = await _db
-        .collection('leaderboard')
-        .orderBy('stars', descending: true)
-        .limit(limit)
-        .get();
+    final result = await query.get();
     return [
       for (final doc in result.docs)
         LeaderboardEntry(
           playerId: doc.id,
           name: doc.data()['name'] as String? ?? 'Player',
-          stars: (doc.data()['stars'] as num?)?.toInt() ?? 0,
-          levels: (doc.data()['levels'] as num?)?.toInt() ?? 0,
+          score: _int(doc.data(), scoreField),
+          levels: _int(doc.data(), 'levels'),
+          playerLevel: max(1, _int(doc.data(), 'playerLevel')),
         ),
     ];
   }
 
-  @override
-  Future<int> rankFor(int stars) async {
+  Future<int> _count(Query<Map<String, dynamic>> query) async {
     await _signIn();
-    final ahead = await _db
-        .collection('leaderboard')
-        .where('stars', isGreaterThan: stars)
-        .count()
-        .get();
-    return (ahead.count ?? 0) + 1;
+    return (await query.count().get()).count ?? 0;
+  }
+
+  CollectionReference<Map<String, dynamic>> get _board =>
+      _db.collection('leaderboard');
+
+  CollectionReference<Map<String, dynamic>> _daily(int day) =>
+      _db.collection('daily/$day/scores');
+
+  @override
+  Future<List<LeaderboardEntry>> topPlayers({int limit = 50}) =>
+      _entries(_board.orderBy('stars', descending: true).limit(limit), 'stars');
+
+  @override
+  Future<int> rankFor(int stars) async =>
+      await _count(_board.where('stars', isGreaterThan: stars)) + 1;
+
+  @override
+  Future<List<LeaderboardEntry>> weeklyTop(int week, {int limit = 50}) =>
+      _entries(
+        _board
+            .where('week', isEqualTo: week)
+            .where('weekStars', isGreaterThan: 0)
+            .orderBy('weekStars', descending: true)
+            .limit(limit),
+        'weekStars',
+      );
+
+  @override
+  Future<int> weeklyRank(int week, int stars) async {
+    // Players still in that week, plus those who have since moved on and
+    // carry it as their previous week.
+    final current = await _count(
+      _board
+          .where('week', isEqualTo: week)
+          .where('weekStars', isGreaterThan: stars)
+          .orderBy('weekStars', descending: true),
+    );
+    final moved = await _count(
+      _board
+          .where('lastWeek', isEqualTo: week)
+          .where('lastWeekStars', isGreaterThan: stars)
+          .orderBy('lastWeekStars', descending: true),
+    );
+    return current + moved + 1;
+  }
+
+  @override
+  Future<void> saveDailyScore(int day, String name, int moves) async {
+    final uid = await _signIn();
+    await _daily(day).doc(uid).set({
+      'name': name,
+      'moves': moves,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  @override
+  Future<List<LeaderboardEntry>> dailyTop(int day, {int limit = 50}) =>
+      _entries(_daily(day).orderBy('moves').limit(limit), 'moves');
+
+  @override
+  Future<int> dailyRank(int day, int moves) async =>
+      await _count(_daily(day).where('moves', isLessThan: moves)) + 1;
+
+  @override
+  Future<void> deleteDailyScores(List<int> days) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || days.isEmpty) return;
+    final batch = _db.batch();
+    for (final day in days) {
+      batch.delete(_daily(day).doc(uid));
+    }
+    await batch.commit();
   }
 
   Future<void> _deletePhoto(String uid) async {

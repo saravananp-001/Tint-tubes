@@ -26,6 +26,12 @@ Puzzle generateDailyPuzzle(int day) {
   return _build(colors: colors, filled: colors, seed: 5000011 + day * 7919);
 }
 
+/// Builds a small, quick puzzle for Rush mode: 4 to 6 colours.
+Puzzle generateRushPuzzle(int seed) {
+  final colors = 4 + seed % 3;
+  return _build(colors: colors, filled: colors, seed: 9000011 + seed * 7919);
+}
+
 Puzzle _build({required int colors, required int filled, required int seed}) {
   for (var attempt = 0; ; attempt++) {
     final rnd = Random(seed + attempt * 104729);
@@ -47,6 +53,9 @@ Puzzle _build({required int colors, required int filled, required int seed}) {
 /// Isolate entry point for [generatePuzzle].
 Puzzle generatePuzzleIsolate((int difficultyIndex, int level) request) =>
     generatePuzzle(Difficulty.values[request.$1], request.$2);
+
+/// Isolate entry point for [generateRushPuzzle].
+Puzzle generateRushPuzzleIsolate(int seed) => generateRushPuzzle(seed);
 
 /// Isolate entry point for [generateDailyPuzzle].
 Puzzle generateDailyPuzzleIsolate(int day) => generateDailyPuzzle(day);

@@ -153,6 +153,30 @@ class SettingsScreen extends StatelessWidget {
                   value: settings.colorBlind,
                   onChanged: (v) => settings.colorBlind = v,
                 ),
+                SwitchListTile(
+                  secondary: const Icon(Icons.notifications_active_rounded),
+                  title: const Text('Daily reminder'),
+                  subtitle: const Text(
+                    'One notification around 7 pm on days you have not '
+                    'played',
+                  ),
+                  value: settings.reminder,
+                  onChanged: (v) async {
+                    if (!v) {
+                      await services.reminder.disable();
+                    } else if (!await services.reminder.enable() &&
+                        context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Notifications are blocked for Tint Tubes. '
+                            'Allow them in your phone settings first.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.speed_rounded),
                   title: const Text('Pour speed'),

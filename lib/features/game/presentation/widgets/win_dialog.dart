@@ -18,6 +18,10 @@ class WinDialog extends StatelessWidget {
     this.nextLabel = 'Next level',
     this.achievements = const [],
     this.onShare,
+    this.onChallenge,
+    this.note,
+    this.replayLabel = 'Replay',
+    this.showReward = true,
   });
 
   final String title;
@@ -34,6 +38,17 @@ class WinDialog extends StatelessWidget {
 
   /// Set on milestone levels: opens the share poster. The dialog stays open.
   final VoidCallback? onShare;
+
+  /// Shares this puzzle and move count as a challenge code.
+  final VoidCallback? onChallenge;
+
+  /// Extra line under the move count, e.g. a lucky spin that was earned.
+  final String? note;
+
+  final String replayLabel;
+
+  /// False hides the coins line, for puzzles that pay nothing.
+  final bool showReward;
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +77,22 @@ class WinDialog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text('Solved in $moves moves'),
+          if (note != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                note!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.star,
+                ),
+              ),
+            ),
           const SizedBox(height: 14),
-          if (coinsEarned > 0)
+          if (!showReward)
+            const SizedBox.shrink()
+          else if (coinsEarned > 0)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -105,13 +134,21 @@ class WinDialog extends StatelessWidget {
               label: const Text('Share this milestone'),
             ),
           ],
+          if (onChallenge != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onChallenge,
+              icon: const Icon(Icons.sports_kabaddi_rounded),
+              label: const Text('Challenge a friend'),
+            ),
+          ],
         ],
       ),
       actionsAlignment: MainAxisAlignment.spaceEvenly,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, WinAction.replay),
-          child: const Text('Replay'),
+          child: Text(replayLabel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, WinAction.next),

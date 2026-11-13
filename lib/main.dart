@@ -13,7 +13,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   final prefs = await SharedPreferences.getInstance();
-  runApp(TintTubesApp(services: AppServices(prefs, cloud: await _cloud())));
+  final services = AppServices(prefs, cloud: await _cloud());
+  services.reminder.refresh().ignore();
+  runApp(TintTubesApp(services: services));
 }
 
 /// The online service, or the offline stand-in when no Firebase project

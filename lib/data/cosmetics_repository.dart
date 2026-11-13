@@ -23,7 +23,12 @@ class CosmeticsRepository extends ChangeNotifier {
       BackgroundTheme.values.asNameMap()[_prefs.getString('background')] ??
       BackgroundTheme.night;
 
-  bool isSelected(Cosmetic item) => item == tubeStyle || item == background;
+  ConfettiStyle get confetti =>
+      ConfettiStyle.values.asNameMap()[_prefs.getString('confetti')] ??
+      ConfettiStyle.classic;
+
+  bool isSelected(Cosmetic item) =>
+      item == tubeStyle || item == background || item == confetti;
 
   /// Spends coins on [item]. Returns false if the player cannot afford it.
   bool buy(Cosmetic item) {
@@ -45,6 +50,8 @@ class CosmeticsRepository extends ChangeNotifier {
         _prefs.setString('tube_style', s.name);
       case BackgroundTheme b:
         _prefs.setString('background', b.name);
+      case ConfettiStyle c:
+        _prefs.setString('confetti', c.name);
     }
     notifyListeners();
   }

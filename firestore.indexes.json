@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "leaderboard",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week", "order": "ASCENDING" },
+        { "fieldPath": "weekStars", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leaderboard",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lastWeek", "order": "ASCENDING" },
+        { "fieldPath": "lastWeekStars", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

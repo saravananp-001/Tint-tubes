@@ -25,6 +25,7 @@ class SettingsRepository extends ChangeNotifier {
     'vibration_enabled',
     'color_blind',
     'pour_speed',
+    'reminder',
   };
 
   bool get soundEnabled => _prefs.getBool('sound_enabled') ?? true;
@@ -46,6 +47,14 @@ class SettingsRepository extends ChangeNotifier {
 
   set colorBlind(bool value) {
     _prefs.setBool('color_blind', value);
+    notifyListeners();
+  }
+
+  /// Whether the daily reminder notification is switched on.
+  bool get reminder => _prefs.getBool('reminder') ?? false;
+
+  set reminder(bool value) {
+    _prefs.setBool('reminder', value);
     notifyListeners();
   }
 

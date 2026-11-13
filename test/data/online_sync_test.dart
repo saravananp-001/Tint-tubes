@@ -3,7 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tint_tubes/data/cloud/cloud_service.dart';
 import 'package:tint_tubes/data/online_sync.dart';
 import 'package:tint_tubes/data/profile_repository.dart';
+import 'package:tint_tubes/data/daily_repository.dart';
 import 'package:tint_tubes/data/progress_repository.dart';
+import 'package:tint_tubes/data/stats_repository.dart';
+import 'package:tint_tubes/data/weekly_repository.dart';
 import 'package:tint_tubes/features/game/domain/difficulty.dart';
 
 class FakeCloud implements CloudService {
@@ -29,11 +32,27 @@ class FakeCloud implements CloudService {
     deletes++;
   }
 
-  @override
-  Future<List<LeaderboardEntry>> topPlayers({int limit = 50}) async => const [];
+  final dailyScores = <int, int>{};
 
   @override
-  Future<int> rankFor(int stars) async => 1;
+  Future<void> saveDailyScore(int day, String name, int moves) async {
+    if (fail) throw Exception('offline');
+    dailyScores[day] = moves;
+  }
+
+  @override
+  Future<void> deleteDailyScores(List<int> days) async {
+    if (fail) throw Exception('offline');
+    days.forEach(dailyScores.remove);
+  }
+
+  int weekRank = 1;
+
+  @override
+  Future<int> weeklyRank(int week, int stars) async => weekRank;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -48,7 +67,15 @@ void main() {
     profile = ProfileRepository(prefs);
     progress = ProgressRepository(prefs);
     cloud = FakeCloud();
-    sync = OnlineSync(profile, progress, cloud, delay: Duration.zero);
+    sync = OnlineSync(
+      profile,
+      progress,
+      cloud,
+      weekly: WeeklyRepository(prefs, progress),
+      stats: StatsRepository(prefs),
+      daily: DailyRepository(prefs, progress),
+      delay: Duration.zero,
+    );
   });
 
   test('nothing is uploaded before a profile exists', () async {
@@ -117,6 +144,35 @@ void main() {
     cloud.fail = false;
     expect(await sync.flush(), isTrue);
     expect(cloud.deletes, 1);
+  });
+
+  test('daily puzzle scores follow the leaderboard switch', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final daily = DailyRepository(prefs, progress);
+    daily.completePuzzle(27);
+    profile.save(name: 'Asha', ageRange: AgeRange.adult);
+    await sync.flush();
+    expect(cloud.dailyScores, isEmpty);
+
+    profile.save(name: 'Asha', ageRange: AgeRange.adult, online: true);
+    await sync.flush();
+    expect(cloud.dailyScores[daily.today], 27);
+
+    profile.online = false;
+    await sync.flush();
+    expect(cloud.dailyScores, isEmpty);
+  });
+
+  test('last week\'s prize is paid once', () async {
+    final prefs = await SharedPreferences.getInstance();
+    profile.save(name: 'Asha', ageRange: AgeRange.adult, online: true);
+    await prefs.setInt('week_id', 7);
+    await prefs.setInt('week_base', 0);
+    progress.completeLevel(Difficulty.easy, 1, 3);
+    cloud.weekRank = 2;
+    final prize = await sync.claimWeeklyPrize();
+    expect(prize, (rank: 2, coins: 60));
+    expect(await sync.claimWeeklyPrize(), isNull);
   });
 
   test('changing to under 13 removes the online copy', () async {

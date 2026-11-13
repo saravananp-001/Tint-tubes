@@ -28,7 +28,15 @@ service cloud.firestore {
              ['teen', 'youngAdult', 'adult', 'midAdult', 'senior'];
     }
 
-    // Public leaderboard row: nickname and score only.
+    // The weekly fields are optional so that older versions of the game,
+    // which do not send them, can still save their row.
+    function validWeek(field) {
+      return request.resource.data.get(field, 0) is int
+        && request.resource.data.get(field, 0) >= 0
+        && request.resource.data.get(field, 0) <= 100000;
+    }
+
+    // Public leaderboard row: nickname and scores only.
     match /leaderboard/{uid} {
       allow read: if request.auth != null;
       allow delete: if request.auth != null && request.auth.uid == uid;
@@ -36,7 +44,31 @@ service cloud.firestore {
         && request.auth.uid == uid
         && validScore()
         && request.resource.data.keys().hasOnly(
-             ['name', 'stars', 'levels', 'updatedAt']);
+             ['name', 'stars', 'levels', 'playerLevel', 'week', 'weekStars',
+              'lastWeek', 'lastWeekStars', 'updatedAt'])
+        && request.resource.data.get('playerLevel', 1) is int
+        && request.resource.data.get('playerLevel', 1) >= 1
+        && request.resource.data.get('playerLevel', 1) <= 100
+        && validWeek('week') && validWeek('lastWeek')
+        && validWeek('weekStars') && validWeek('lastWeekStars')
+        && request.resource.data.get('weekStars', 0) <= 3360
+        && request.resource.data.get('lastWeekStars', 0) <= 3360;
+    }
+
+    // Daily puzzle board: nickname and move count.
+    match /daily/{day}/scores/{uid} {
+      allow read: if request.auth != null;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'moves', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 20
+        && request.resource.data.moves is int
+        && request.resource.data.moves >= 1
+        && request.resource.data.moves <= 5000
+        && request.resource.data.updatedAt == request.time;
     }
   }
 }
