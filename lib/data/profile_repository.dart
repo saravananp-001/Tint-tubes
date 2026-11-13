@@ -16,8 +16,8 @@ enum AgeRange {
   final String label;
 }
 
-/// The player's profile. It is stored on this device, and is uploaded
-/// only while the player has switched [online] on.
+/// The player's profile. It is stored on this device and, while
+/// [uploads] is true, also saved to the game's server.
 class ProfileRepository extends ChangeNotifier {
   ProfileRepository(this._prefs);
 
@@ -31,6 +31,7 @@ class ProfileRepository extends ChangeNotifier {
     'profile_photo',
     'profile_online',
     'profile_synced',
+    'profile_no_upload',
   };
 
   static const maxNameLength = 20;
@@ -49,14 +50,27 @@ class ProfileRepository extends ChangeNotifier {
   /// null if the player has not set one.
   String? get photoPath => _prefs.getString('profile_photo');
 
-  /// Players under 13 cannot share their profile online.
+  /// Nothing is uploaded for players under 13.
   static bool mayGoOnline(AgeRange? age) =>
       age != null && age != AgeRange.under13;
 
-  /// Whether the player agreed to share their profile and score online.
-  /// Always false for an age range that may not go online.
-  bool get online =>
-      (_prefs.getBool('profile_online') ?? false) && mayGoOnline(ageRange);
+  /// Whether the player deleted their online data and so opted out of
+  /// uploads. Joining the leaderboard again clears it.
+  bool get uploadsOff => _prefs.getBool('profile_no_upload') ?? false;
+
+  set uploadsOff(bool value) {
+    if (value == uploadsOff) return;
+    _prefs.setBool('profile_no_upload', value);
+    if (value) _prefs.setBool('profile_online', false);
+    notifyListeners();
+  }
+
+  /// Whether the profile and score are saved to the server: every player
+  /// of 13 or over who has not opted out.
+  bool get uploads => asked && mayGoOnline(ageRange) && !uploadsOff;
+
+  /// Whether the player also appears on the public leaderboard.
+  bool get online => (_prefs.getBool('profile_online') ?? false) && uploads;
 
   set online(bool value) {
     if (value == online) return;
@@ -101,6 +115,7 @@ class ProfileRepository extends ChangeNotifier {
       _prefs.setString('profile_photo', photoPath);
     }
     if (online != null) _prefs.setBool('profile_online', online);
+    if (online == true) _prefs.remove('profile_no_upload');
     _prefs.setBool('profile_asked', true);
     notifyListeners();
   }

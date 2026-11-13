@@ -80,8 +80,8 @@ class SettingsScreen extends StatelessWidget {
         title: const Text('Delete your online data?'),
         content: const Text(
           'Your nickname, age range, picture and score are removed from '
-          'our server and you leave the leaderboard. Your progress on '
-          'this device is kept.',
+          'our server, you leave the leaderboard, and nothing more is '
+          'uploaded. Your progress on this device is kept.',
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.spaceEvenly,
@@ -200,13 +200,13 @@ class SettingsScreen extends StatelessWidget {
                 ListenableBuilder(
                   listenable: services.profile,
                   builder: (context, _) =>
-                      services.profile.online || services.profile.synced
+                      services.profile.uploads || services.profile.synced
                       ? ListTile(
                           leading: const Icon(Icons.cloud_off_rounded),
                           title: const Text('Delete my online data'),
                           subtitle: const Text(
-                            'Leaves the leaderboard and removes your '
-                            'profile from our server',
+                            'Removes your profile and score from our '
+                            'server',
                           ),
                           onTap: () => _confirmDeleteOnline(context),
                         )

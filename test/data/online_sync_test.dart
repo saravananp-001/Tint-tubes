@@ -51,15 +51,22 @@ void main() {
     sync = OnlineSync(profile, progress, cloud, delay: Duration.zero);
   });
 
-  test('nothing is uploaded until the player opts in', () async {
-    profile.save(name: 'Asha', ageRange: AgeRange.adult);
+  test('nothing is uploaded before a profile exists', () async {
     progress.completeLevel(Difficulty.easy, 1, 3);
     expect(await sync.flush(), isTrue);
     expect(cloud.saved, isEmpty);
-    expect(profile.synced, isFalse);
   });
 
-  test('opting in uploads the profile and score', () async {
+  test('the profile is uploaded without joining the leaderboard', () async {
+    profile.save(name: 'Asha', ageRange: AgeRange.adult);
+    progress.completeLevel(Difficulty.easy, 1, 3);
+    expect(await sync.flush(), isTrue);
+    expect(cloud.saved.single.name, 'Asha');
+    expect(cloud.saved.single.onLeaderboard, isFalse);
+    expect(profile.synced, isTrue);
+  });
+
+  test('joining the leaderboard uploads a public row', () async {
     profile.save(name: 'Asha', ageRange: AgeRange.adult, online: true);
     progress.completeLevel(Difficulty.easy, 1, 3);
     expect(await sync.flush(), isTrue);
@@ -67,6 +74,7 @@ void main() {
     expect(cloud.saved.single.ageRange, 'adult');
     expect(cloud.saved.single.stars, 3);
     expect(cloud.saved.single.levels, 1);
+    expect(cloud.saved.single.onLeaderboard, isTrue);
     expect(profile.synced, isTrue);
 
     // Unchanged data is not sent again.
@@ -88,6 +96,16 @@ void main() {
     expect(cloud.deletes, 1);
     expect(profile.online, isFalse);
     expect(profile.synced, isFalse);
+
+    // Nothing more is uploaded after opting out.
+    progress.completeLevel(Difficulty.easy, 1, 3);
+    await sync.flush();
+    expect(cloud.saved, hasLength(1));
+
+    // Joining the leaderboard again resumes uploads.
+    profile.save(name: 'Asha', ageRange: AgeRange.adult, online: true);
+    await sync.flush();
+    expect(cloud.saved, hasLength(2));
   });
 
   test('a failed deletion is retried later', () async {

@@ -1,4 +1,4 @@
-/// What is uploaded for a player who joined the online leaderboard.
+/// What is uploaded for a player.
 class PlayerSnapshot {
   const PlayerSnapshot({
     required this.name,
@@ -6,9 +6,13 @@ class PlayerSnapshot {
     required this.photoPath,
     required this.stars,
     required this.levels,
+    required this.onLeaderboard,
   });
 
   final String name;
+
+  /// Whether the nickname and score are also shown to other players.
+  final bool onLeaderboard;
 
   /// Name of the age band, for example `adult`.
   final String ageRange;
@@ -29,10 +33,12 @@ class PlayerSnapshot {
       other.ageRange == ageRange &&
       other.photoPath == photoPath &&
       other.stars == stars &&
-      other.levels == levels;
+      other.levels == levels &&
+      other.onLeaderboard == onLeaderboard;
 
   @override
-  int get hashCode => Object.hash(name, ageRange, photoPath, stars, levels);
+  int get hashCode =>
+      Object.hash(name, ageRange, photoPath, stars, levels, onLeaderboard);
 }
 
 /// One row of the leaderboard. Only the nickname and score are public.
@@ -60,7 +66,8 @@ abstract class CloudService {
   /// This install's player id, or null before the first upload.
   String? get playerId;
 
-  /// Creates or updates the player's profile and leaderboard row.
+  /// Creates or updates the player's private profile, and adds or removes
+  /// their public leaderboard row.
   Future<void> savePlayer(PlayerSnapshot player);
 
   /// The best players, highest star count first.

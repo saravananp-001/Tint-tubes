@@ -76,13 +76,18 @@ class FirebaseCloudService implements CloudService {
         'stars': player.stars,
         'levels': player.levels,
         'updatedAt': FieldValue.serverTimestamp(),
-      })
-      ..set(_db.doc('leaderboard/$uid'), {
+      });
+    final row = _db.doc('leaderboard/$uid');
+    if (player.onLeaderboard) {
+      batch.set(row, {
         'name': player.name,
         'stars': player.stars,
         'levels': player.levels,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+    } else {
+      batch.delete(row);
+    }
     await batch.commit();
   }
 

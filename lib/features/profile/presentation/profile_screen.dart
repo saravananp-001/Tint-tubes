@@ -40,6 +40,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool get _mayGoOnline => ProfileRepository.mayGoOnline(_age);
 
+  /// Whether saving now would store the profile on the server.
+  bool get _uploads =>
+      widget.onlineAvailable &&
+      _mayGoOnline &&
+      (!widget.profile.uploadsOff || _online);
+
   @override
   void dispose() {
     _name.dispose();
@@ -243,9 +249,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: const Text('Join the online leaderboard'),
                   subtitle: Text(
                     _age != AgeRange.under13
-                        ? 'Sends your nickname, age range, picture and '
-                              'score to our server. Other players see only '
-                              'your nickname and score.'
+                        ? 'Shows your nickname and score to other '
+                              'players.'
                         : 'Not available for players under 13.',
                     style: const TextStyle(fontSize: 12),
                   ),
@@ -259,7 +264,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    _online && _mayGoOnline
+                    _uploads
                         ? Icons.cloud_upload_outlined
                         : Icons.lock_outline_rounded,
                     size: 18,
@@ -267,10 +272,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _online && _mayGoOnline
-                          ? 'Your profile is stored online while this is '
-                                'on. Switch it off, or use "Delete my '
-                                'online data" in Settings, to remove it.'
+                      _uploads
+                          ? 'Your nickname, age range, picture and score '
+                                'are saved to our server. Other players '
+                                'never see your age range or picture. You '
+                                'can remove it with "Delete my online '
+                                'data" in Settings.'
                           : 'This stays on your device. It is not sent to '
                                 'us or anyone else.',
                       style: const TextStyle(

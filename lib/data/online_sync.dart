@@ -9,8 +9,9 @@ import 'progress_repository.dart';
 
 /// Keeps the online copy of the player in step with the device.
 ///
-/// Nothing is uploaded unless the player switched "online" on in their
-/// profile. Switching it off again deletes the online copy.
+/// Every player of 13 or over has their profile and score saved online;
+/// the leaderboard switch only decides whether other players see them.
+/// Nothing is uploaded for under-13s or after "Delete my online data".
 class OnlineSync {
   OnlineSync(
     this._profile,
@@ -37,7 +38,7 @@ class OnlineSync {
   /// Whether the leaderboard can be offered at all.
   bool get available => cloud.available;
 
-  /// Whether this player is sharing their profile right now.
+  /// Whether this player is on the public leaderboard right now.
   bool get active => cloud.available && _profile.online;
 
   PlayerSnapshot get _snapshot => PlayerSnapshot(
@@ -49,11 +50,12 @@ class OnlineSync {
       0,
       (sum, d) => sum + _progress.completedLevels(d),
     ),
+    onLeaderboard: _profile.online,
   );
 
   void _changed() {
-    final needsUpload = _profile.online && _snapshot != _uploaded;
-    final needsDelete = !_profile.online && _profile.synced;
+    final needsUpload = _profile.uploads && _snapshot != _uploaded;
+    final needsDelete = !_profile.uploads && _profile.synced;
     if (!needsUpload && !needsDelete) return;
     _timer?.cancel();
     _timer = Timer(delay, () => flush().ignore());
@@ -66,7 +68,7 @@ class OnlineSync {
     _timer?.cancel();
     if (!cloud.available) return false;
     try {
-      if (_profile.online) {
+      if (_profile.uploads) {
         final snapshot = _snapshot;
         if (snapshot == _uploaded) return true;
         await cloud.savePlayer(snapshot);
@@ -84,10 +86,10 @@ class OnlineSync {
     }
   }
 
-  /// Leaves the leaderboard and removes the online copy. Returns false
+  /// Removes the online copy and stops further uploads. Returns false
   /// if the deletion could not be done yet; it is retried later.
   Future<bool> leave() {
-    _profile.online = false;
+    _profile.uploadsOff = true;
     return flush();
   }
 }

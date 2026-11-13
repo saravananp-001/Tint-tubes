@@ -67,8 +67,8 @@ test/                           mirrors lib/
 
 On first launch the game asks for a profile before play starts: a nickname
 and an age range, both required, plus an optional picture from the gallery
-or camera. It is saved on the device (`profile_repository.dart`) and is
-uploaded only if the player joins the online leaderboard. The nickname
+or camera. It is saved on the device (`profile_repository.dart`) and,
+for players of 13 or over, also on the server (see below). The nickname
 appears on the home screen and the share poster; it can be changed in
 Settings.
 
@@ -77,15 +77,19 @@ Settings.
 Off until `lib/firebase_options.dart` is filled in; until then the game is
 fully offline and the leaderboard is hidden.
 
-- Opt-in: a "Join the online leaderboard" switch on the profile screen.
-  Players under 13 cannot switch it on.
+- Every player of 13 or over has their profile and score saved to
+  Firestore; the profile screen says so. Nothing is uploaded for players
+  under 13.
+- The "Join the online leaderboard" switch on the profile screen only
+  decides whether other players see the nickname and score.
 - Sign-in is anonymous (no login screen).
 - `players/{uid}` holds the private profile (nickname, age range, picture
   marker, stars, levels); `leaderboard/{uid}` holds the public row
   (nickname, stars, levels). The picture goes to Storage at
   `profile_photos/{uid}.jpg` and is readable only by its owner.
-- Switching the option off, or "Delete my online data" in Settings,
-  removes all of it and the anonymous account.
+- "Delete my online data" in Settings removes all of it and the
+  anonymous account, and stops uploads until the player joins the
+  leaderboard again.
 - Code: `lib/data/cloud/`, `lib/data/online_sync.dart`,
   `lib/features/leaderboard/`. Rules: `firestore.rules`, `storage.rules`
   (deploy with `firebase deploy --only firestore:rules,storage`).
