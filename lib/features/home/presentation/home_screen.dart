@@ -11,6 +11,7 @@ import '../../achievements/domain/achievement.dart';
 import '../../achievements/presentation/achievements_screen.dart';
 import '../../game/domain/difficulty.dart';
 import '../../game/presentation/game_screen.dart';
+import '../../leaderboard/presentation/leaderboard_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../share/domain/poster_data.dart';
 import '../../share/presentation/share_poster_screen.dart';
@@ -171,6 +172,15 @@ class HomeScreen extends StatelessWidget {
                             _open(context, ShopScreen(services: services)),
                         icon: const Icon(Icons.palette_rounded),
                       ),
+                      if (services.online.available)
+                        IconButton(
+                          tooltip: 'Leaderboard',
+                          onPressed: () => _open(
+                            context,
+                            LeaderboardScreen(services: services),
+                          ),
+                          icon: const Icon(Icons.leaderboard_rounded),
+                        ),
                       if (PosterData.latest(
                             progress,
                             playerName: services.profile.name,

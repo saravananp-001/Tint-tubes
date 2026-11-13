@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile pictures: owner only, JPEG, at most 1 MB.
+    match /profile_photos/{file} {
+      allow read, delete: if request.auth != null
+        && file == request.auth.uid + '.jpg';
+      allow write: if request.auth != null
+        && file == request.auth.uid + '.jpg'
+        && request.resource.size < 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
+    }
+  }
+}

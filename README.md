@@ -18,7 +18,8 @@ lib/
     theme/                      colours, tube styles, background themes
     widgets/                    shared widgets (coin badge, confetti, ...)
   data/                         saved data: progress, settings, daily,
-                                achievements, cosmetics
+                                achievements, cosmetics, profile
+    cloud/                      online service (Firebase) and its stand-in
   features/
     home/                       start screen: daily cards and the tiers
     levels/                     level grid for one difficulty
@@ -30,6 +31,7 @@ lib/
     achievements/               achievement list
     shop/                       tube styles and backgrounds
     settings/                   settings, how to play, reset
+    leaderboard/                online leaderboard
 test/                           mirrors lib/
 ```
 
@@ -64,9 +66,31 @@ test/                           mirrors lib/
 ## Profile
 
 On first launch the game asks for a profile before play starts: a nickname
-and an age range, both required, plus an optional picture from the gallery or camera. It is saved on the device only (`profile_repository.dart`)
-and never sent anywhere. The nickname appears on the home screen and the
-share poster; it can be changed in Settings.
+and an age range, both required, plus an optional picture from the gallery
+or camera. It is saved on the device (`profile_repository.dart`) and is
+uploaded only if the player joins the online leaderboard. The nickname
+appears on the home screen and the share poster; it can be changed in
+Settings.
+
+## Online leaderboard (Firebase)
+
+Off until `lib/firebase_options.dart` is filled in; until then the game is
+fully offline and the leaderboard is hidden.
+
+- Opt-in: a "Join the online leaderboard" switch on the profile screen.
+  Players under 13 cannot switch it on.
+- Sign-in is anonymous (no login screen).
+- `players/{uid}` holds the private profile (nickname, age range, picture
+  marker, stars, levels); `leaderboard/{uid}` holds the public row
+  (nickname, stars, levels). The picture goes to Storage at
+  `profile_photos/{uid}.jpg` and is readable only by its owner.
+- Switching the option off, or "Delete my online data" in Settings,
+  removes all of it and the anonymous account.
+- Code: `lib/data/cloud/`, `lib/data/online_sync.dart`,
+  `lib/features/leaderboard/`. Rules: `firestore.rules`, `storage.rules`
+  (deploy with `firebase deploy --only firestore:rules,storage`).
+- Scores are written by the app, so they can be forged; the rules only
+  cap them at the game's maximum.
 
 ## Rewards
 

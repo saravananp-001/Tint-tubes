@@ -16,8 +16,8 @@ enum AgeRange {
   final String label;
 }
 
-/// The player's profile. It is stored on this device only and is
-/// never sent anywhere.
+/// The player's profile. It is stored on this device, and is uploaded
+/// only while the player has switched [online] on.
 class ProfileRepository extends ChangeNotifier {
   ProfileRepository(this._prefs);
 
@@ -29,6 +29,8 @@ class ProfileRepository extends ChangeNotifier {
     'profile_name',
     'profile_age',
     'profile_photo',
+    'profile_online',
+    'profile_synced',
   };
 
   static const maxNameLength = 20;
@@ -47,9 +49,38 @@ class ProfileRepository extends ChangeNotifier {
   /// null if the player has not set one.
   String? get photoPath => _prefs.getString('profile_photo');
 
+  /// Players under 13 cannot share their profile online.
+  static bool mayGoOnline(AgeRange? age) =>
+      age != null && age != AgeRange.under13;
+
+  /// Whether the player agreed to share their profile and score online.
+  /// Always false for an age range that may not go online.
+  bool get online =>
+      (_prefs.getBool('profile_online') ?? false) && mayGoOnline(ageRange);
+
+  set online(bool value) {
+    if (value == online) return;
+    _prefs.setBool('profile_online', value);
+    notifyListeners();
+  }
+
+  /// Whether a copy of the profile currently exists online.
+  bool get synced => _prefs.getBool('profile_synced') ?? false;
+
+  set synced(bool value) {
+    if (value == synced) return;
+    _prefs.setBool('profile_synced', value);
+    notifyListeners();
+  }
+
   /// Saves the profile. A blank [name], or a null [ageRange] or
-  /// [photoPath], clears that field.
-  void save({String? name, AgeRange? ageRange, String? photoPath}) {
+  /// [photoPath], clears that field. [online] is left as it was when null.
+  void save({
+    String? name,
+    AgeRange? ageRange,
+    String? photoPath,
+    bool? online,
+  }) {
     var trimmed = name?.trim() ?? '';
     if (trimmed.length > maxNameLength) {
       trimmed = trimmed.substring(0, maxNameLength);
@@ -69,6 +100,7 @@ class ProfileRepository extends ChangeNotifier {
     } else {
       _prefs.setString('profile_photo', photoPath);
     }
+    if (online != null) _prefs.setBool('profile_online', online);
     _prefs.setBool('profile_asked', true);
     notifyListeners();
   }

@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Online leaderboard. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Tint Tubes"
         android:name="${applicationName}"

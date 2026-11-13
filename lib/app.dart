@@ -26,6 +26,7 @@ class TintTubesApp extends StatelessWidget {
                 builder: (context) => ProfileScreen(
                   profile: services.profile,
                   onboarding: true,
+                  onlineAvailable: services.online.available,
                   onDone: () => Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(

@@ -53,7 +53,10 @@ class SettingsScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Reset'),
           ),
@@ -66,6 +69,51 @@ class SettingsScreen extends StatelessWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Progress was reset.')));
+    }
+  }
+
+  Future<void> _confirmDeleteOnline(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.cloud_off_rounded, size: 40),
+        title: const Text('Delete your online data?'),
+        content: const Text(
+          'Your nickname, age range, picture and score are removed from '
+          'our server and you leave the leaderboard. Your progress on '
+          'this device is kept.',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final done = await services.online.leave();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            done
+                ? 'Your online data was deleted.'
+                : 'No connection. It will be deleted when you are next '
+                      'online.',
+          ),
+        ),
+      );
     }
   }
 
@@ -134,6 +182,7 @@ class SettingsScreen extends StatelessWidget {
                       [
                         services.profile.name ?? 'No name',
                         services.profile.ageRange?.label ?? 'no age given',
+                        if (services.profile.online) 'on the leaderboard',
                       ].join(' · '),
                     ),
                     onTap: () => Navigator.push(
@@ -141,11 +190,27 @@ class SettingsScreen extends StatelessWidget {
                       MaterialPageRoute(
                         builder: (ctx) => ProfileScreen(
                           profile: services.profile,
+                          onlineAvailable: services.online.available,
                           onDone: () => Navigator.pop(ctx),
                         ),
                       ),
                     ),
                   ),
+                ),
+                ListenableBuilder(
+                  listenable: services.profile,
+                  builder: (context, _) =>
+                      services.profile.online || services.profile.synced
+                      ? ListTile(
+                          leading: const Icon(Icons.cloud_off_rounded),
+                          title: const Text('Delete my online data'),
+                          subtitle: const Text(
+                            'Leaves the leaderboard and removes your '
+                            'profile from our server',
+                          ),
+                          onTap: () => _confirmDeleteOnline(context),
+                        )
+                      : const SizedBox.shrink(),
                 ),
                 ListTile(
                   leading: const Icon(Icons.help_outline_rounded),

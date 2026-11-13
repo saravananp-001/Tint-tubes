@@ -3,23 +3,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/audio/sound_service.dart';
 import 'core/feedback/haptics.dart';
 import 'data/achievements_repository.dart';
+import 'data/cloud/cloud_service.dart';
 import 'data/cosmetics_repository.dart';
 import 'data/daily_repository.dart';
+import 'data/online_sync.dart';
 import 'data/profile_repository.dart';
 import 'data/progress_repository.dart';
 import 'data/settings_repository.dart';
 
 /// Everything the screens share: saved data, sound and vibration.
 class AppServices {
-  AppServices(this._prefs, {DateTime Function()? now})
-    : settings = SettingsRepository(_prefs),
-      profile = ProfileRepository(_prefs),
-      progress = ProgressRepository(_prefs) {
+  AppServices(
+    this._prefs, {
+    DateTime Function()? now,
+    CloudService cloud = const NoCloudService(),
+  }) : settings = SettingsRepository(_prefs),
+       profile = ProfileRepository(_prefs),
+       progress = ProgressRepository(_prefs) {
     sound = SoundService(settings);
     haptics = Haptics(settings);
     cosmetics = CosmeticsRepository(_prefs, progress);
     daily = DailyRepository(_prefs, progress, now: now);
     achievements = AchievementsRepository(_prefs, progress);
+    online = OnlineSync(profile, progress, cloud);
   }
 
   final SharedPreferences _prefs;
@@ -31,6 +37,9 @@ class AppServices {
   late final CosmeticsRepository cosmetics;
   late final DailyRepository daily;
   late final AchievementsRepository achievements;
+
+  /// Leaderboard upload; does nothing unless the player opted in.
+  late final OnlineSync online;
 
   /// Wipes coins, levels, purchases, achievements and daily streaks.
   /// Settings and the profile are kept.

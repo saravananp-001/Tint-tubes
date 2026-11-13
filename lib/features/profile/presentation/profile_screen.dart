@@ -18,11 +18,15 @@ class ProfileScreen extends StatefulWidget {
     required this.profile,
     required this.onDone,
     this.onboarding = false,
+    this.onlineAvailable = false,
   });
 
   final ProfileRepository profile;
   final VoidCallback onDone;
   final bool onboarding;
+
+  /// Whether to offer joining the online leaderboard.
+  final bool onlineAvailable;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -32,6 +36,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final _name = TextEditingController(text: widget.profile.name ?? '');
   late AgeRange? _age = widget.profile.ageRange;
   late String? _photoPath = widget.profile.photoPath;
+  late bool _online = widget.profile.online;
+
+  bool get _mayGoOnline => ProfileRepository.mayGoOnline(_age);
 
   @override
   void dispose() {
@@ -45,6 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       name: _name.text,
       ageRange: _age,
       photoPath: _photoPath,
+      online: _online && _mayGoOnline,
     );
     // The picture that was replaced or removed is no longer needed.
     if (previous != null && previous != _photoPath) {
@@ -228,16 +236,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              const Row(
+              if (widget.onlineAvailable)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.leaderboard_rounded),
+                  title: const Text('Join the online leaderboard'),
+                  subtitle: Text(
+                    _age != AgeRange.under13
+                        ? 'Sends your nickname, age range, picture and '
+                              'score to our server. Other players see only '
+                              'your nickname and score.'
+                        : 'Not available for players under 13.',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  value: _online && _mayGoOnline,
+                  onChanged: _mayGoOnline
+                      ? (v) => setState(() => _online = v)
+                      : null,
+                ),
+              const SizedBox(height: 8),
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.lock_outline_rounded, size: 18),
-                  SizedBox(width: 8),
+                  Icon(
+                    _online && _mayGoOnline
+                        ? Icons.cloud_upload_outlined
+                        : Icons.lock_outline_rounded,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'This stays on your device. It is not sent to us or '
-                      'anyone else.',
-                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                      _online && _mayGoOnline
+                          ? 'Your profile is stored online while this is '
+                                'on. Switch it off, or use "Delete my '
+                                'online data" in Settings, to remove it.'
+                          : 'This stays on your device. It is not sent to '
+                                'us or anyone else.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white70,
+                      ),
                     ),
                   ),
                 ],
